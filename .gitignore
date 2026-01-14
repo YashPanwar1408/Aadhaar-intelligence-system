@@ -1,0 +1,28 @@
+# Large CSV output files
+outputs/cleaned_biometric_data.csv
+outputs/cleaned_demographic_data.csv
+outputs/cleaned_enrolment_data.csv
+outputs/master_dataset_with_asi.csv
+outputs/predictions_biometric_load.csv
+
+# Input data files (too large for GitHub)
+api_data_aadhar_biometric/*.csv
+api_data_aadhar_demographic/*.csv
+api_data_aadhar_enrolment/*.csv
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# VS Code
+.vscode/
+
+# Other
+.DS_Store
+*.log
