@@ -14,12 +14,15 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.linear_model import LinearRegression, Ridge, Lasso
+from sklearn.tree import DecisionTreeRegressor
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
 import warnings
 import os
 from pathlib import Path
+import time
 
 warnings.filterwarnings('ignore')
 
@@ -492,18 +495,18 @@ class AadhaarIntelligenceSystem:
     
     
     # =========================================================================
-    # SECTION 7: MACHINE LEARNING MODEL
+    # SECTION 7: MACHINE LEARNING MODELS COMPARISON
     # =========================================================================
     
     def build_ml_model(self):
         """
-        Build Random Forest model to predict future biometric update load.
+        Build and compare multiple ML models to predict future biometric update load.
         """
-        print("\nSECTION 7: MACHINE LEARNING MODEL")
-        print("-" * 80)
+        print("\nSECTION 7: MACHINE LEARNING MODELS COMPARISON")
+        print("=" * 80)
         
         print("Target Variable: bio_age_17_ (Biometric updates for age 17+)")
-        print("Model: Random Forest Regressor\n")
+        print("Comparing Multiple Regression Models\n")
         
         # Prepare features and target
         # Remove rows where target is 0 to focus on actual update patterns
@@ -531,82 +534,205 @@ class AadhaarIntelligenceSystem:
         
         print(f"Training Set: {len(X_train):,} | Test Set: {len(X_test):,}\n")
         
-        # Train model
-        print("Training Random Forest Regressor...")
-        rf_model = RandomForestRegressor(
-            n_estimators=100,
-            max_depth=15,
-            min_samples_split=10,
-            min_samples_leaf=5,
-            random_state=42,
-            n_jobs=-1,
-            verbose=0
-        )
+        # Initialize models dictionary
+        models = {
+            'Random Forest': RandomForestRegressor(n_estimators=100, max_depth=15, min_samples_split=10, min_samples_leaf=5, random_state=42, n_jobs=-1),
+            'Gradient Boosting': GradientBoostingRegressor(n_estimators=100, max_depth=7, learning_rate=0.1, random_state=42),
+            'Linear Regression': LinearRegression(n_jobs=-1),
+            'Ridge Regression': Ridge(alpha=1.0, random_state=42),
+            'Lasso Regression': Lasso(alpha=1.0, random_state=42),
+            'Decision Tree': DecisionTreeRegressor(max_depth=15, min_samples_split=10, min_samples_leaf=5, random_state=42)
+        }
         
-        rf_model.fit(X_train, y_train)
-        print("  ✓ Model training completed!\n")
+        # Train and evaluate all models
+        results = []
+        trained_models = {}
         
-        # Make predictions
-        y_pred_train = rf_model.predict(X_train)
-        y_pred_test = rf_model.predict(X_test)
+        print("Training and evaluating models...")
+        print("-" * 80)
         
-        # Evaluate model
-        print("MODEL PERFORMANCE:")
-        print("-" * 40)
-        train_mae = mean_absolute_error(y_train, y_pred_train)
-        train_r2 = r2_score(y_train, y_pred_train)
-        test_mae = mean_absolute_error(y_test, y_pred_test)
-        test_r2 = r2_score(y_test, y_pred_test)
+        for name, model in models.items():
+            print(f"\nTraining {name}...")
+            start_time = time.time()
+            
+            # Train model
+            model.fit(X_train, y_train)
+            training_time = time.time() - start_time
+            
+            # Make predictions
+            y_train_pred = model.predict(X_train)
+            y_test_pred = model.predict(X_test)
+            
+            # Calculate metrics
+            train_mae = mean_absolute_error(y_train, y_train_pred)
+            test_mae = mean_absolute_error(y_test, y_test_pred)
+            train_r2 = r2_score(y_train, y_train_pred)
+            test_r2 = r2_score(y_test, y_test_pred)
+            train_rmse = np.sqrt(mean_squared_error(y_train, y_train_pred))
+            test_rmse = np.sqrt(mean_squared_error(y_test, y_test_pred))
+            
+            # Store results
+            results.append({
+                'Model': name,
+                'Train MAE': train_mae,
+                'Test MAE': test_mae,
+                'Train R²': train_r2,
+                'Test R²': test_r2,
+                'Train RMSE': train_rmse,
+                'Test RMSE': test_rmse,
+                'Training Time (s)': training_time
+            })
+            
+            trained_models[name] = {
+                'model': model,
+                'predictions': y_test_pred
+            }
+            
+            print(f"✓ {name} completed in {training_time:.2f}s")
+            print(f"  Test R²: {test_r2:.4f} | Test MAE: {test_mae:.2f} | Test RMSE: {test_rmse:.2f}")
         
-        print(f"Training MAE: {train_mae:.2f}")
-        print(f"Training R²:  {train_r2:.4f}")
-        print(f"Test MAE:     {test_mae:.2f}")
-        print(f"Test R²:      {test_r2:.4f}\n")
+        # Create results DataFrame
+        results_df = pd.DataFrame(results)
         
-        # Feature importance
-        feature_importance = pd.DataFrame({
-            'Feature': feature_cols,
-            'Importance': rf_model.feature_importances_
-        }).sort_values('Importance', ascending=False)
+        # Find best model based on Test R²
+        best_idx = results_df['Test R²'].idxmax()
+        best_model_name = results_df.loc[best_idx, 'Model']
+        best_model = trained_models[best_model_name]['model']
+        best_y_pred = trained_models[best_model_name]['predictions']
         
-        print("FEATURE IMPORTANCE (Top 10):")
-        print("-" * 40)
-        print(feature_importance.head(10).to_string(index=False))
-        print()
+        print("\n" + "=" * 80)
+        print(f"BEST MODEL: {best_model_name}")
+        print(f"Test R² Score: {results_df.loc[best_idx, 'Test R²']:.4f}")
+        print(f"Test MAE: {results_df.loc[best_idx, 'Test MAE']:.2f}")
+        print(f"Test RMSE: {results_df.loc[best_idx, 'Test RMSE']:.2f}")
+        print("=" * 80)
         
-        # Visualize feature importance
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 6))
+        # Display comparison table
+        print("\n" + "MODEL COMPARISON TABLE:")
+        print("-" * 80)
+        print(results_df.to_string(index=False))
+        print("-" * 80 + "\n")
         
-        # Feature importance plot
-        sns.barplot(data=feature_importance.head(10), x='Importance', y='Feature', 
-                    palette='viridis', ax=ax1)
-        ax1.set_title('Top 10 Feature Importance', fontsize=14, fontweight='bold')
-        ax1.set_xlabel('Importance Score', fontsize=12)
-        ax1.set_ylabel('Feature', fontsize=12)
+        # Feature importance (from best model if it supports it)
+        if hasattr(best_model, 'feature_importances_'):
+            feature_importance = pd.DataFrame({
+                'Feature': feature_cols,
+                'Importance': best_model.feature_importances_
+            }).sort_values('Importance', ascending=False)
+            
+            print("FEATURE IMPORTANCE (Top 10):")
+            print("-" * 40)
+            print(feature_importance.head(10).to_string(index=False))
+            print()
+        else:
+            feature_importance = None
+            print("Note: Best model does not support feature importance.\n")
         
-        # Actual vs Predicted
+        # Create comprehensive visualization
+        fig = plt.figure(figsize=(20, 12))
+        gs = fig.add_gridspec(3, 3, hspace=0.3, wspace=0.3)
+        
+        # 1. Test R² Comparison
+        ax1 = fig.add_subplot(gs[0, 0])
+        results_sorted = results_df.sort_values('Test R²', ascending=False)
+        colors = ['#2ecc71' if m == best_model_name else '#3498db' for m in results_sorted['Model']]
+        ax1.barh(results_sorted['Model'], results_sorted['Test R²'], color=colors)
+        ax1.set_xlabel('Test R² Score', fontsize=11, fontweight='bold')
+        ax1.set_title('Model Comparison: Test R² Score', fontsize=12, fontweight='bold')
+        ax1.grid(axis='x', alpha=0.3)
+        for i, v in enumerate(results_sorted['Test R²']):
+            ax1.text(v + 0.01, i, f'{v:.4f}', va='center', fontsize=9)
+        
+        # 2. Test MAE Comparison
+        ax2 = fig.add_subplot(gs[0, 1])
+        results_sorted_mae = results_df.sort_values('Test MAE')
+        colors_mae = ['#2ecc71' if m == best_model_name else '#e74c3c' for m in results_sorted_mae['Model']]
+        ax2.barh(results_sorted_mae['Model'], results_sorted_mae['Test MAE'], color=colors_mae)
+        ax2.set_xlabel('Test MAE (Lower is Better)', fontsize=11, fontweight='bold')
+        ax2.set_title('Model Comparison: Test MAE', fontsize=12, fontweight='bold')
+        ax2.grid(axis='x', alpha=0.3)
+        for i, v in enumerate(results_sorted_mae['Test MAE']):
+            ax2.text(v + max(results_sorted_mae['Test MAE'])*0.01, i, f'{v:.2f}', va='center', fontsize=9)
+        
+        # 3. Test RMSE Comparison
+        ax3 = fig.add_subplot(gs[0, 2])
+        results_sorted_rmse = results_df.sort_values('Test RMSE')
+        colors_rmse = ['#2ecc71' if m == best_model_name else '#f39c12' for m in results_sorted_rmse['Model']]
+        ax3.barh(results_sorted_rmse['Model'], results_sorted_rmse['Test RMSE'], color=colors_rmse)
+        ax3.set_xlabel('Test RMSE (Lower is Better)', fontsize=11, fontweight='bold')
+        ax3.set_title('Model Comparison: Test RMSE', fontsize=12, fontweight='bold')
+        ax3.grid(axis='x', alpha=0.3)
+        for i, v in enumerate(results_sorted_rmse['Test RMSE']):
+            ax3.text(v + max(results_sorted_rmse['Test RMSE'])*0.01, i, f'{v:.2f}', va='center', fontsize=9)
+        
+        # 4. Training Time Comparison
+        ax4 = fig.add_subplot(gs[1, 0])
+        results_sorted_time = results_df.sort_values('Training Time (s)')
+        colors_time = ['#2ecc71' if m == best_model_name else '#9b59b6' for m in results_sorted_time['Model']]
+        ax4.barh(results_sorted_time['Model'], results_sorted_time['Training Time (s)'], color=colors_time)
+        ax4.set_xlabel('Training Time (seconds)', fontsize=11, fontweight='bold')
+        ax4.set_title('Model Comparison: Training Time', fontsize=12, fontweight='bold')
+        ax4.grid(axis='x', alpha=0.3)
+        for i, v in enumerate(results_sorted_time['Training Time (s)']):
+            ax4.text(v + max(results_sorted_time['Training Time (s)'])*0.01, i, f'{v:.2f}s', va='center', fontsize=9)
+        
+        # 5. Metrics Heatmap
+        ax5 = fig.add_subplot(gs[1, 1:])
+        metrics_for_heatmap = results_df[['Model', 'Test R²', 'Test MAE', 'Test RMSE', 'Training Time (s)']].set_index('Model')
+        # Normalize for better visualization
+        metrics_normalized = (metrics_for_heatmap - metrics_for_heatmap.min()) / (metrics_for_heatmap.max() - metrics_for_heatmap.min())
+        sns.heatmap(metrics_normalized.T, annot=metrics_for_heatmap.T, fmt='.3f', cmap='RdYlGn', 
+                    cbar_kws={'label': 'Normalized Score'}, ax=ax5, linewidths=0.5)
+        ax5.set_title('All Metrics Comparison (Normalized)', fontsize=12, fontweight='bold')
+        ax5.set_xlabel('')
+        ax5.set_ylabel('Metrics', fontsize=11, fontweight='bold')
+        
+        # 6. Actual vs Predicted (Best Model)
+        ax6 = fig.add_subplot(gs[2, :2])
         sample_size = min(1000, len(y_test))
         sample_indices = np.random.choice(len(y_test), sample_size, replace=False)
-        ax2.scatter(y_test.iloc[sample_indices], y_pred_test[sample_indices], 
-                    alpha=0.5, s=10, color='#3498db')
-        ax2.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 
+        ax6.scatter(y_test.iloc[sample_indices], best_y_pred[sample_indices], 
+                    alpha=0.5, s=15, color='#3498db', edgecolors='white', linewidth=0.3)
+        ax6.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 
                  'r--', lw=2, label='Perfect Prediction')
-        ax2.set_xlabel('Actual Bio Updates (17+)', fontsize=12)
-        ax2.set_ylabel('Predicted Bio Updates (17+)', fontsize=12)
-        ax2.set_title(f'Actual vs Predicted (Test Set)\nR² = {test_r2:.4f}, MAE = {test_mae:.2f}', 
-                      fontsize=14, fontweight='bold')
-        ax2.legend()
-        ax2.grid(True, alpha=0.3)
+        ax6.set_xlabel('Actual Bio Updates (17+)', fontsize=11, fontweight='bold')
+        ax6.set_ylabel('Predicted Bio Updates (17+)', fontsize=11, fontweight='bold')
+        best_test_r2 = results_df.loc[best_idx, 'Test R²']
+        best_test_mae = results_df.loc[best_idx, 'Test MAE']
+        ax6.set_title(f'Best Model ({best_model_name}): Actual vs Predicted\nR² = {best_test_r2:.4f}, MAE = {best_test_mae:.2f}', 
+                      fontsize=12, fontweight='bold')
+        ax6.legend(fontsize=10)
+        ax6.grid(True, alpha=0.3)
         
-        plt.tight_layout()
-        model_path = self.output_dir / 'ml_model_performance.png'
-        plt.savefig(model_path, dpi=300, bbox_inches='tight')
-        print(f"  ✓ Saved: {model_path}")
+        # 7. Feature Importance (if available)
+        ax7 = fig.add_subplot(gs[2, 2])
+        if feature_importance is not None:
+            sns.barplot(data=feature_importance.head(10), x='Importance', y='Feature', 
+                        palette='viridis', ax=ax7)
+            ax7.set_title(f'Top 10 Feature Importance\n({best_model_name})', fontsize=12, fontweight='bold')
+            ax7.set_xlabel('Importance Score', fontsize=11, fontweight='bold')
+            ax7.set_ylabel('')
+        else:
+            ax7.text(0.5, 0.5, 'Feature Importance\nNot Available\nfor this model', 
+                     ha='center', va='center', fontsize=12, transform=ax7.transAxes)
+            ax7.axis('off')
+        
+        plt.suptitle('MACHINE LEARNING MODELS COMPARISON - Complete Analysis', 
+                     fontsize=16, fontweight='bold', y=0.995)
+        
+        comparison_path = self.output_dir / 'ml_models_comparison.png'
+        plt.savefig(comparison_path, dpi=300, bbox_inches='tight')
+        print(f"\n✓ Saved comprehensive comparison: {comparison_path}")
         plt.close()
         
-        print("✓ Machine learning model completed!\n")
+        # Save comparison results to CSV
+        results_csv_path = self.output_dir / 'ml_models_comparison_results.csv'
+        results_df.to_csv(results_csv_path, index=False)
+        print(f"✓ Saved comparison results: {results_csv_path}")
         
-        return rf_model, feature_cols, feature_importance
+        print("\n✓ Machine learning models comparison completed!\n")
+        
+        return best_model, feature_cols, feature_importance, results_df
     
     
     # =========================================================================
@@ -775,8 +901,8 @@ class AadhaarIntelligenceSystem:
             # Step 6: Anomaly detection
             self.detect_anomalies()
             
-            # Step 7: Build ML model
-            model, feature_cols, feature_importance = self.build_ml_model()
+            # Step 7: Build ML model (now returns 4 values)
+            model, feature_cols, feature_importance, results_df = self.build_ml_model()
             
             # Step 8: Generate predictions
             self.generate_predictions(model, feature_cols)
@@ -794,12 +920,14 @@ class AadhaarIntelligenceSystem:
             print("   3. Predictions dataset")
             print("   4. EDA visualizations")
             print("   5. Anomaly detection report")
-            print("   6. ML model performance analysis")
+            print("   6. ML models comparison analysis")
             print("   7. Summary statistics")
             print("\n🎯 KEY INSIGHTS:")
             print(f"   • Total Records Analyzed: {len(self.master_df):,}")
             print(f"   • Average ASI: {self.master_df['asi'].mean():.4f}")
             print(f"   • Districts Covered: {self.master_df['district'].nunique()}")
+            print(f"   • Best ML Model: {results_df.loc[results_df['Test R²'].idxmax(), 'Model']}")
+            print(f"   • Best Model Test R²: {results_df['Test R²'].max():.4f}")
             print(f"   • Predicted Future Bio Load: {self.master_df['predicted_bio_load'].sum():,.0f}")
             print("\n" + "=" * 80 + "\n")
             
